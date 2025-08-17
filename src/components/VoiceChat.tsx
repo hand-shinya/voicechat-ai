@@ -160,10 +160,20 @@ export default function VoiceChat() {
         throw new Error(`AI応答エラー: ${chatResponse.status}`)
       }
 
-      // レスポンスヘッダーからAIテキストを取得（新機能）
-      const aiResponseText = chatResponse.headers.get('X-AI-Response-Text') || 'AI応答を再生中...'
+      // AIテキスト取得（デコード処理修正版）
+      let aiResponseText = 'AI応答を再生中...'
+      try {
+        const encodedAiText = chatResponse.headers.get('X-AI-Response-Text')
+        if (encodedAiText) {
+          aiResponseText = decodeURIComponent(encodedAiText)
+          console.log('✅ AIテキストデコード成功:', aiResponseText)
+        }
+      } catch (decodeError) {
+        console.warn('⚠️ AIテキストデコードエラー:', decodeError)
+        aiResponseText = 'AI応答（テキスト取得エラー）'
+      }
       
-      // AIメッセージを履歴に追加（新機能）
+      // AIメッセージを履歴に追加
       addMessage('ai', aiResponseText)
 
       // 音声データを受信
