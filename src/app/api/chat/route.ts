@@ -1,98 +1,74 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
+import { NextRequest, NextResponse } from 'next/server';
+import OpenAI from 'openai';
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData()
-    const audioFile = formData.get('audio') as File
-    
-    if (!audioFile) {
-      return NextResponse.json({ error: 'No audio file provided' }, { status: 400 })
+    const { message } = await request.json();
+
+    if (!message) {
+      return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
     }
 
-    console.log('Audio file received:', audioFile.type, audioFile.size, 'bytes')
-
-    // ステップ1: Whisper APIで音声をテキストに変換
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: 'whisper-1',
-      language: 'ja',
-    })
-
-    const userText = transcription.text
-    console.log('Transcription:', userText)
-
-    if (!userText || userText.trim().length === 0) {
-      return NextResponse.json({ error: 'No speech detected' }, { status: 400 })
-    }
-
-    // ステップ2: GPT-3.5で完全な日本語応答生成（トークン数大幅増加）
-    const chatResponse = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+    // 日本語専用システムプロンプト
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-realtime-preview",
       messages: [
         {
-          role: 'system',
-          content: 'あなたは親しみやすい日本語AIアシスタントです。必ず日本語のみで回答してください。完全な文で終わる自然な回答をしてください。簡潔ですが完結した内容で答えてください。'
+          role: "system",
+          content: `あなたは日本語専用のAIアシスタントです。以下のルールを厳密に守ってください：
+
+1. 必ず100%純粋な日本語のみで応答してください
+2. 英語やその他の言語は一切使用しないでください
+3. 自然で流暢な日本語で話してください
+4. 丁寧語を使用してください
+5. 短時間で理解しやすい回答を心がけてください
+6. 音声での応答に適した話し言葉で答えてください
+
+ユーザーと自然な日本語会話を行ってください。`
         },
         {
-          role: 'user',
-          content: userText
+          role: "user",
+          content: message
         }
       ],
-      max_tokens: 200,  // 60→200に大幅増加
       temperature: 0.7,
-      presence_penalty: 0.0,
-      frequency_penalty: 0.0
-    })
+      max_tokens: 150,
+      // 日本語応答に最適化した設定
+      presence_penalty: 0.1,
+      frequency_penalty: 0.1
+    });
 
-    let assistantText = chatResponse.choices[0]?.message?.content?.trim()
-    console.log('GPT Response (raw):', assistantText)
+    const reply = completion.choices[0]?.message?.content || 'すみません、応答を生成できませんでした。';
 
-    if (!assistantText) {
-      return NextResponse.json({ error: 'No response generated' }, { status: 500 })
-    }
+    // 音声生成（日本語特化）
+    const speech = await openai.audio.speech.create({
+      model: "tts-1",
+      voice: "nova", // 日本語に適した音声
+      input: reply,
+      speed: 0.9, // 聞き取りやすい速度
+      response_format: "mp3"
+    });
 
-    // 文の完全性チェック（句読点で終わっているか確認）
-    if (!assistantText.match(/[。！？]$/)) {
-      assistantText += '。'
-    }
+    const buffer = Buffer.from(await speech.arrayBuffer());
 
-    console.log('GPT Response (final):', assistantText)
-
-    // ステップ3: TTS APIで高品質日本語音声生成（設定最適化）
-    const speechResponse = await openai.audio.speech.create({
-      model: 'tts-1-hd',  // tts-1 → tts-1-hd（高音質）
-      voice: 'alloy',
-      input: assistantText,
-      speed: 0.9,  // 1.0 → 0.9（やや遅く、明瞭に）
-      response_format: 'mp3'  // 明示的にMP3指定
-    })
-
-    // 音声データの完全性確保
-    const audioArrayBuffer = await speechResponse.arrayBuffer()
-    const audioBuffer = Buffer.from(audioArrayBuffer)
-    const audioBase64 = audioBuffer.toString('base64')
-
-    console.log('Audio generated, size:', audioBuffer.length, 'bytes')
-
-    // JSONで音声とテキストの両方を返す
-    return NextResponse.json({
-      userText: userText,
-      assistantText: assistantText,
-      audioData: audioBase64,
-      audioSize: audioBuffer.length,
-      textLength: assistantText.length
-    })
+    return new NextResponse(buffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': buffer.length.toString(),
+        'Cache-Control': 'no-cache',
+      },
+    });
 
   } catch (error) {
-    console.error('Audio chat error:', error)
+    console.error('音声生成エラー:', error);
     return NextResponse.json(
-      { error: 'Internal server error: ' + (error as Error).message },
+      { error: '音声生成中にエラーが発生しました' },
       { status: 500 }
-    )
+    );
   }
 }
