@@ -7,15 +7,27 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🎤 音声チャットAPI呼び出し開始');
+    
     const { message } = await request.json();
 
     if (!message) {
+      console.log('❌ メッセージが空です');
       return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
     }
 
-    // 日本語専用システムプロンプト
+    console.log('📝 受信メッセージ:', message);
+
+    // APIキー確認
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('❌ OPENAI_API_KEY が設定されていません');
+      return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
+    }
+
+    // テキスト生成（修正：標準モデル使用）
+    console.log('🤖 OpenAI API呼び出し中...');
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-realtime-preview",
+      model: "gpt-4o", // 修正：リアルタイムではなく標準モデル
       messages: [
         {
           role: "system",
@@ -27,6 +39,7 @@ export async function POST(request: NextRequest) {
 4. 丁寧語を使用してください
 5. 短時間で理解しやすい回答を心がけてください
 6. 音声での応答に適した話し言葉で答えてください
+7. 簡潔で要点を絞った回答をしてください
 
 ユーザーと自然な日本語会話を行ってください。`
         },
@@ -37,14 +50,15 @@ export async function POST(request: NextRequest) {
       ],
       temperature: 0.7,
       max_tokens: 150,
-      // 日本語応答に最適化した設定
       presence_penalty: 0.1,
       frequency_penalty: 0.1
     });
 
     const reply = completion.choices[0]?.message?.content || 'すみません、応答を生成できませんでした。';
+    console.log('✅ テキスト生成完了:', reply);
 
-    // 音声生成（日本語特化）
+    // 音声生成
+    console.log('🎵 音声生成開始...');
     const speech = await openai.audio.speech.create({
       model: "tts-1",
       voice: "nova", // 日本語に適した音声
@@ -52,6 +66,8 @@ export async function POST(request: NextRequest) {
       speed: 0.9, // 聞き取りやすい速度
       response_format: "mp3"
     });
+
+    console.log('✅ 音声生成完了');
 
     const buffer = Buffer.from(await speech.arrayBuffer());
 
@@ -65,9 +81,29 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('音声生成エラー:', error);
+    console.error('❌ 音声生成エラー詳細:', error);
+    
+    // エラーの詳細情報をログに出力
+    if (error instanceof Error) {
+      console.error('エラーメッセージ:', error.message);
+      console.error('エラースタック:', error.stack);
+    }
+    
+    // API関連エラーの詳細分析
+    if (error.status) {
+      console.error('APIステータス:', error.status);
+    }
+    
+    if (error.response) {
+      console.error('APIレスポンス:', error.response);
+    }
+
     return NextResponse.json(
-      { error: '音声生成中にエラーが発生しました' },
+      { 
+        error: '音声生成中にエラーが発生しました',
+        details: error.message || 'Unknown error',
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     );
   }
