@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         }
       ],
       temperature: 0.7,
-      max_tokens: 50 // デバッグ用に短縮
+      max_tokens: 300 // デバッグ用に短縮
     });
     
     const reply = completion.choices[0]?.message?.content || 'エラー: 応答生成失敗';
@@ -129,3 +129,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
