@@ -8,84 +8,29 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding-bottom: 100px; /* マイクボタンのスペース確保 */
         }
         
         .header {
             text-align: center;
-            margin-bottom: 30px;
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         }
         
         .header h1 {
-            font-size: 2.5rem;
-            margin: 0 0 10px 0;
+            font-size: 2rem;
+            margin: 0 0 20px 0;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
         
-        .header p {
-            font-size: 1.2rem;
-            opacity: 0.9;
-            margin: 0;
-        }
-        
-        .conversation-area {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 20px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            overflow-y: auto;
-            max-height: 60vh;
-        }
-        
-        .message {
-            margin: 15px 0;
-            padding: 15px;
-            border-radius: 10px;
-            max-width: 80%;
-        }
-        
-        .user-message {
-            background: rgba(255, 255, 255, 0.2);
-            margin-left: auto;
-            text-align: right;
-        }
-        
-        .ai-message {
-            background: rgba(0, 0, 0, 0.2);
-            margin-right: auto;
-        }
-        
-        .status {
-            text-align: center;
-            font-size: 1.1rem;
-            margin: 20px 0;
-            opacity: 0.8;
-        }
-        
-        /* 固定マイクボタン */
+        /* マイクボタンを上部に配置 */
         .mic-container {
-            position: fixed;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
         }
         
         .mic-button {
@@ -124,13 +69,51 @@
             100% { box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3); }
         }
         
+        .status {
+            text-align: center;
+            font-size: 1.1rem;
+            margin: 20px 0;
+            opacity: 0.9;
+        }
+        
+        .conversation-area {
+            max-width: 800px;
+            margin: 20px auto;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-height: 300px;
+            max-height: 50vh;
+            overflow-y: auto;
+        }
+        
+        .message {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        
+        .user-message {
+            background: rgba(255, 255, 255, 0.2);
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .ai-message {
+            background: rgba(0, 0, 0, 0.2);
+            margin-right: auto;
+        }
+        
         .connection-status {
             position: fixed;
-            top: 20px;
+            top: 10px;
             right: 20px;
-            padding: 10px 15px;
-            border-radius: 20px;
-            font-size: 0.9rem;
+            padding: 8px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
             z-index: 1000;
         }
         
@@ -141,27 +124,32 @@
         .disconnected {
             background: rgba(231, 76, 60, 0.8);
         }
+        
+        .instructions {
+            text-align: center;
+            font-size: 1rem;
+            opacity: 0.8;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎙️ 音声対話サポートAI</h1>
-            <p>下のマイクボタンを押して質問してください</p>
+    <div class="header">
+        <h1>🎙️ AI音声チャット</h1>
+        
+        <!-- マイクボタンを上部に配置 -->
+        <div class="mic-container">
+            <button class="mic-button" id="micButton">🎤</button>
         </div>
         
-        <div class="conversation-area" id="conversationArea">
-            <div class="message ai-message">
-                <strong>AI:</strong> こんにちは！何かお手伝いできることはありますか？マイクボタンを押して話しかけてください。
-            </div>
-        </div>
-        
+        <div class="instructions">マイクボタンをクリックして会話を始めてください</div>
         <div class="status" id="status">待機中...</div>
     </div>
     
-    <!-- 固定マイクボタン -->
-    <div class="mic-container">
-        <button class="mic-button" id="micButton">🎤</button>
+    <div class="conversation-area" id="conversationArea">
+        <div class="message ai-message">
+            <strong>AI:</strong> こんにちは！何かお手伝いできることはありますか？上のマイクボタンを押して話しかけてください。
+        </div>
     </div>
     
     <!-- 接続状態表示 -->
@@ -173,8 +161,6 @@
         let audioChunks = [];
         let ws = null;
         let audioContext = null;
-        let audioQueue = [];
-        let isPlaying = false;
         
         const micButton = document.getElementById('micButton');
         const status = document.getElementById('status');
