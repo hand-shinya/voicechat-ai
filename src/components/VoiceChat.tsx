@@ -1,25 +1,48 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
+
+interface ChatMessage {
+  id: number
+  type: 'user' | 'ai'
+  text: string
+  audioSize?: number
+  timestamp: Date
+}
 
 export default function VoiceChat() {
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [transcription, setTranscription] = useState('')
-  const [response, setResponse] = useState('')
-  const [audioSize, setAudioSize] = useState(0)
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [error, setError] = useState('')
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const audioRef = useRef<HTMLAudioElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+
+  // 新メッセージ追加時に自動スクロール
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
+  }, [chatHistory])
+
+  const addMessage = (type: 'user' | 'ai', text: string, audioSize?: number) => {
+    const newMessage: ChatMessage = {
+      id: Date.now(),
+      type,
+      text,
+      audioSize,
+      timestamp: new Date()
+    }
+    setChatHistory(prev => [...prev, newMessage])
+  }
 
   const startRecording = async () => {
     try {
       console.log('🎤 録音開始...')
       setError('')
-      setTranscription('')
-      setResponse('')
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
@@ -30,7 +53,6 @@ export default function VoiceChat() {
         }
       })
 
-      // MediaRecorder設定（安全な形式）
       const options = { mimeType: 'audio/webm' }
       if (!MediaRecorder.isTypeSupported(options.mimeType)) {
         console.log('webm非対応、デフォルト形式使用')
@@ -80,16 +102,15 @@ export default function VoiceChat() {
         throw new Error('音声データがありません')
       }
 
-      // 音声ファイル作成（録音用）
+      // 音声ファイル作成
       const recordedAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-      setAudioSize(recordedAudioBlob.size)
       console.log('📊 音声ファイルサイズ:', recordedAudioBlob.size, 'bytes')
 
       if (recordedAudioBlob.size === 0) {
         throw new Error('音声データが空です')
       }
 
-      // FormData作成（安全な送信方法）
+      // FormData作成
       const formData = new FormData()
       formData.append('audio', recordedAudioBlob, 'recording.webm')
       
@@ -110,13 +131,15 @@ export default function VoiceChat() {
       const transcribedText = transcribeData.text || ''
       
       console.log('✅ 音声認識成功:', transcribedText)
-      setTranscription(transcribedText)
 
       if (!transcribedText.trim()) {
         throw new Error('音声が認識されませんでした')
       }
 
-      // Chat API呼び出し（安全なJSON送信）
+      // ユーザーメッセージを履歴に追加
+      addMessage('user', transcribedText, recordedAudioBlob.size)
+
+      // Chat API呼び出し
       console.log('🤖 AI応答生成開始...')
       
       const chatResponse = await fetch('/api/chat', {
@@ -137,6 +160,12 @@ export default function VoiceChat() {
         throw new Error(`AI応答エラー: ${chatResponse.status}`)
       }
 
+      // レスポンスヘッダーからAIテキストを取得（新機能）
+      const aiResponseText = chatResponse.headers.get('X-AI-Response-Text') || 'AI応答を再生中...'
+      
+      // AIメッセージを履歴に追加（新機能）
+      addMessage('ai', aiResponseText)
+
       // 音声データを受信
       const audioArrayBuffer = await chatResponse.arrayBuffer()
       console.log('🎵 AI音声受信:', audioArrayBuffer.byteLength, 'bytes')
@@ -145,7 +174,7 @@ export default function VoiceChat() {
         throw new Error('AI音声データが空です')
       }
 
-      // 音声再生（再生用）
+      // 音声再生
       const playbackAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' })
       const audioUrl = URL.createObjectURL(playbackAudioBlob)
       
@@ -155,11 +184,10 @@ export default function VoiceChat() {
         console.log('🔊 AI音声再生開始')
       }
 
-      setResponse('AI音声応答を再生中...')
-
     } catch (error) {
       console.error('❌ 処理エラー詳細:', error)
       setError(`処理エラー: ${error}`)
+      addMessage('ai', `エラー: ${error}`)
     } finally {
       setIsProcessing(false)
       audioChunksRef.current = []
@@ -174,56 +202,91 @@ export default function VoiceChat() {
     }
   }
 
+  const clearHistory = () => {
+    setChatHistory([])
+    setError('')
+  }
+
   return (
-    <div className="flex flex-col items-center space-y-6 p-8">
-      <h1 className="text-3xl font-bold text-gray-800">🎤 AI音声チャット</h1>
-      
-      <div className="flex flex-col items-center space-y-4">
-        <button
-          onClick={toggleRecording}
-          disabled={isProcessing}
-          className={`w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold transition-all duration-200 ${
-            isRecording 
-              ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
-              : isProcessing
-              ? 'bg-yellow-500 text-white cursor-not-allowed'
-              : 'bg-green-500 hover:bg-green-600 text-white'
-          }`}
-        >
-          {isProcessing ? '⏳' : isRecording ? '⏹️' : '🎤'}
-        </button>
-        
-        <p className="text-sm text-gray-600">
-          {isProcessing ? '処理中...' : isRecording ? '録音中 - クリックで停止' : 'クリックで録音開始'}
-        </p>
+    <div className="flex flex-col h-screen max-h-screen bg-gray-50">
+      {/* ヘッダー */}
+      <div className="flex-shrink-0 bg-white shadow-sm border-b p-4">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-800">🎤 AI音声チャット</h1>
+          <button
+            onClick={clearHistory}
+            className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
+          >
+            履歴クリア
+          </button>
+        </div>
       </div>
 
-      {audioSize > 0 && (
-        <div className="text-sm text-blue-600">
-          音声: {(audioSize / 1024).toFixed(1)}KB / 文字: {transcription.length}
-        </div>
-      )}
+      {/* チャット履歴エリア（スクロール可能） */}
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+      >
+        {chatHistory.length === 0 ? (
+          <div className="text-center text-gray-500 mt-8">
+            <p>🎤 マイクボタンをクリックして会話を始めてください</p>
+          </div>
+        ) : (
+          chatHistory.map((message) => (
+            <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-2xl w-fit p-4 rounded-lg ${
+                message.type === 'user' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-white text-gray-800 shadow-sm border'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-semibold">
+                    {message.type === 'user' ? '👤 あなた' : '🤖 AI'}
+                  </span>
+                  <span className="text-xs opacity-70">
+                    {message.timestamp.toLocaleTimeString()}
+                  </span>
+                  {message.audioSize && (
+                    <span className="text-xs opacity-70">
+                      ({(message.audioSize / 1024).toFixed(1)}KB)
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm leading-relaxed">{message.text}</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
-      {transcription && (
-        <div className="max-w-2xl w-full p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-semibold text-blue-800 mb-2">👤 あなた:</h3>
-          <p className="text-blue-700">{transcription}</p>
-        </div>
-      )}
+      {/* 録音コントロールエリア */}
+      <div className="flex-shrink-0 bg-white border-t p-6">
+        <div className="flex flex-col items-center space-y-4">
+          <button
+            onClick={toggleRecording}
+            disabled={isProcessing}
+            className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold transition-all duration-200 ${
+              isRecording 
+                ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
+                : isProcessing
+                ? 'bg-yellow-500 text-white cursor-not-allowed'
+                : 'bg-green-500 hover:bg-green-600 text-white shadow-lg hover:shadow-xl'
+            }`}
+          >
+            {isProcessing ? '⏳' : isRecording ? '⏹️' : '🎤'}
+          </button>
+          
+          <p className="text-sm text-gray-600 text-center">
+            {isProcessing ? '処理中...' : isRecording ? '録音中 - クリックで停止' : 'クリックで録音開始'}
+          </p>
 
-      {response && (
-        <div className="max-w-2xl w-full p-4 bg-green-50 rounded-lg">
-          <h3 className="font-semibold text-green-800 mb-2">🤖 AI:</h3>
-          <p className="text-green-700">{response}</p>
+          {error && (
+            <div className="w-full max-w-2xl p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm">❌ {error}</p>
+            </div>
+          )}
         </div>
-      )}
-
-      {error && (
-        <div className="max-w-2xl w-full p-4 bg-red-50 rounded-lg">
-          <h3 className="font-semibold text-red-800 mb-2">❌ エラー:</h3>
-          <p className="text-red-700">{error}</p>
-        </div>
-      )}
+      </div>
 
       <audio ref={audioRef} className="hidden" />
     </div>

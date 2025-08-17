@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'audio/mpeg',
         'Content-Length': buffer.length.toString(),
-      },
+      "X-AI-Response-Text": encodeURIComponent(reply),},
     });
 
   } catch (error) {
@@ -129,4 +129,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 
