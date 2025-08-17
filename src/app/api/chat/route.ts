@@ -1,45 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function POST(request: NextRequest) {
+  console.log('=== 🔍 DEBUG START ===');
+  
   try {
-    console.log('🎤 音声チャットAPI呼び出し開始');
-    
+    // ステップ1: リクエスト解析
+    console.log('ステップ1: リクエスト解析開始');
     const { message } = await request.json();
+    console.log('ステップ1完了: メッセージ受信 =', message);
 
     if (!message) {
-      console.log('❌ メッセージが空です');
+      console.log('エラー: メッセージが空');
       return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
     }
 
-    console.log('📝 受信メッセージ:', message);
-
-    if (!process.env.OPENAI_API_KEY) {
-      console.log('❌ OPENAI_API_KEY が設定されていません');
+    // ステップ2: API Key確認
+    console.log('ステップ2: API Key確認開始');
+    const apiKey = process.env.OPENAI_API_KEY;
+    console.log('ステップ2: API Key存在 =', !!apiKey);
+    console.log('ステップ2: API Key先頭 =', apiKey ? apiKey.substring(0, 10) + '...' : 'なし');
+    
+    if (!apiKey) {
+      console.log('エラー: API Key未設定');
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
     }
 
-    console.log('🤖 OpenAI API呼び出し中...');
+    // ステップ3: OpenAI初期化
+    console.log('ステップ3: OpenAI初期化開始');
+    const openai = new OpenAI({
+      apiKey: apiKey,
+    });
+    console.log('ステップ3完了: OpenAI初期化成功');
+
+    // ステップ4: Chat Completion（簡略版）
+    console.log('ステップ4: Chat Completion開始');
+    console.log('使用モデル: gpt-4o');
+    
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: `あなたは日本語専用のAIアシスタントです。以下のルールを厳密に守ってください：
-
-1. 必ず100%純粋な日本語のみで応答してください
-2. 英語やその他の言語は一切使用しないでください
-3. 自然で流暢な日本語で話してください
-4. 丁寧語を使用してください
-5. 短時間で理解しやすい回答を心がけてください
-6. 音声での応答に適した話し言葉で答えてください
-7. 簡潔で要点を絞った回答をしてください
-
-ユーザーと自然な日本語会話を行ってください。`
+          content: "あなたは日本語で応答するAIです。簡潔に回答してください。"
         },
         {
           role: "user",
@@ -47,63 +50,79 @@ export async function POST(request: NextRequest) {
         }
       ],
       temperature: 0.7,
-      max_tokens: 150,
-      presence_penalty: 0.1,
-      frequency_penalty: 0.1
+      max_tokens: 50 // デバッグ用に短縮
     });
+    
+    const reply = completion.choices[0]?.message?.content || 'エラー: 応答生成失敗';
+    console.log('ステップ4完了: テキスト生成成功 =', reply);
 
-    const reply = completion.choices[0]?.message?.content || 'すみません、応答を生成できませんでした。';
-    console.log('✅ テキスト生成完了:', reply);
-
-    console.log('🎵 音声生成開始...');
+    // ステップ5: 音声生成（デバッグ版）
+    console.log('ステップ5: 音声生成開始');
+    console.log('音声モデル: tts-1, 音声: nova');
+    
     const speech = await openai.audio.speech.create({
       model: "tts-1",
       voice: "nova",
       input: reply,
-      speed: 0.9,
+      speed: 1.0, // デバッグ用に標準速度
       response_format: "mp3"
     });
+    
+    console.log('ステップ5完了: 音声生成成功');
 
-    console.log('✅ 音声生成完了');
+    // ステップ6: レスポンス作成
+    console.log('ステップ6: レスポンス作成開始');
+    const arrayBuffer = await speech.arrayBuffer();
+    console.log('ステップ6: ArrayBuffer取得 =', arrayBuffer.byteLength, 'bytes');
+    
+    const buffer = Buffer.from(arrayBuffer);
+    console.log('ステップ6完了: Buffer作成 =', buffer.length, 'bytes');
 
-    const buffer = Buffer.from(await speech.arrayBuffer());
+    console.log('=== ✅ DEBUG SUCCESS ===');
 
     return new NextResponse(buffer, {
       status: 200,
       headers: {
         'Content-Type': 'audio/mpeg',
         'Content-Length': buffer.length.toString(),
-        'Cache-Control': 'no-cache',
       },
     });
 
   } catch (error) {
-    console.error('❌ 音声生成エラー詳細:', error);
-    
-    // TypeScript型安全なエラーハンドリング
-    let errorMessage = 'Unknown error';
-    let errorStatus = null;
+    console.log('=== ❌ DEBUG ERROR ===');
+    console.error('エラータイプ:', typeof error);
+    console.error('エラー内容:', error);
     
     if (error instanceof Error) {
-      errorMessage = error.message;
-      console.error('エラーメッセージ:', errorMessage);
-      console.error('エラースタック:', error.stack);
+      console.error('Error.name:', error.name);
+      console.error('Error.message:', error.message);
+      console.error('Error.stack:', error.stack);
     }
     
-    // OpenAI APIエラーの型安全チェック
-    if (error && typeof error === 'object' && 'status' in error) {
-      errorStatus = (error as any).status;
-      console.error('APIステータス:', errorStatus);
+    // OpenAI APIエラーの詳細
+    if (error && typeof error === 'object') {
+      const errorObj = error as any;
+      if ('status' in errorObj) {
+        console.error('OpenAI Status:', errorObj.status);
+      }
+      if ('code' in errorObj) {
+        console.error('OpenAI Code:', errorObj.code);
+      }
+      if ('error' in errorObj) {
+        console.error('OpenAI Error:', errorObj.error);
+      }
+      if ('response' in errorObj) {
+        console.error('OpenAI Response:', errorObj.response);
+      }
     }
-    
-    if (error && typeof error === 'object' && 'response' in error) {
-      console.error('APIレスポンス:', (error as any).response);
-    }
+
+    console.log('=== DEBUG ERROR END ===');
 
     return NextResponse.json(
       { 
-        error: '音声生成中にエラーが発生しました',
-        details: errorMessage,
+        error: 'デバッグ: 音声生成エラー',
+        errorType: typeof error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown',
         timestamp: new Date().toISOString()
       },
       { status: 500 }
