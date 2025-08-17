@@ -80,23 +80,30 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('❌ 音声生成エラー詳細:', error);
     
+    // TypeScript型安全なエラーハンドリング
+    let errorMessage = 'Unknown error';
+    let errorStatus = null;
+    
     if (error instanceof Error) {
-      console.error('エラーメッセージ:', error.message);
+      errorMessage = error.message;
+      console.error('エラーメッセージ:', errorMessage);
       console.error('エラースタック:', error.stack);
     }
     
-    if (error.status) {
-      console.error('APIステータス:', error.status);
+    // OpenAI APIエラーの型安全チェック
+    if (error && typeof error === 'object' && 'status' in error) {
+      errorStatus = (error as any).status;
+      console.error('APIステータス:', errorStatus);
     }
     
-    if (error.response) {
-      console.error('APIレスポンス:', error.response);
+    if (error && typeof error === 'object' && 'response' in error) {
+      console.error('APIレスポンス:', (error as any).response);
     }
 
     return NextResponse.json(
       { 
         error: '音声生成中にエラーが発生しました',
-        details: error.message || 'Unknown error',
+        details: errorMessage,
         timestamp: new Date().toISOString()
       },
       { status: 500 }
