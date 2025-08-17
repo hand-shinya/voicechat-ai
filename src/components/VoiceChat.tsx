@@ -80,18 +80,18 @@ export default function VoiceChat() {
         throw new Error('音声データがありません')
       }
 
-      // 音声ファイル作成
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-      setAudioSize(audioBlob.size)
-      console.log('📊 音声ファイルサイズ:', audioBlob.size, 'bytes')
+      // 音声ファイル作成（録音用）
+      const recordedAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+      setAudioSize(recordedAudioBlob.size)
+      console.log('📊 音声ファイルサイズ:', recordedAudioBlob.size, 'bytes')
 
-      if (audioBlob.size === 0) {
+      if (recordedAudioBlob.size === 0) {
         throw new Error('音声データが空です')
       }
 
       // FormData作成（安全な送信方法）
       const formData = new FormData()
-      formData.append('audio', audioBlob, 'recording.webm')
+      formData.append('audio', recordedAudioBlob, 'recording.webm')
       
       console.log('📤 音声認識API呼び出し...')
 
@@ -145,9 +145,9 @@ export default function VoiceChat() {
         throw new Error('AI音声データが空です')
       }
 
-      // 音声再生
-      const audioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' })
-      const audioUrl = URL.createObjectURL(audioBlob)
+      // 音声再生（再生用）
+      const playbackAudioBlob = new Blob([audioArrayBuffer], { type: 'audio/mpeg' })
+      const audioUrl = URL.createObjectURL(playbackAudioBlob)
       
       if (audioRef.current) {
         audioRef.current.src = audioUrl
